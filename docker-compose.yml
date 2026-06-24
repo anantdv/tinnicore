@@ -1,0 +1,57 @@
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_DATABASE: tinnicore
+      MARIADB_USER: tinnicore
+      MARIADB_PASSWORD: tinnicore
+      MARIADB_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://tinnicore:tinnicore@db:3306/tinnicore}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api}
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+  adminer:
+    image: adminer:4
+    profiles: ["tools"]
+    ports:
+      - "8080:8080"
+
+volumes:
+  db_data:

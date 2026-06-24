@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/app/app.tsx","./src/app/shell.tsx","./src/captive/captiveportal.tsx","./src/modules/auth/loginpage.tsx","./src/shared/api.ts","./src/shared/auth.tsx","./src/shared/forms.ts","./src/shared/types.ts"],"version":"5.9.3"}
