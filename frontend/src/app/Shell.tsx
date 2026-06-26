@@ -42,7 +42,7 @@ const navItems = [
   ["Users", "/users"],
   ["Plans", "/plans"],
   ["Vouchers", "/vouchers"],
-  ["Sessions", "/sessions"],
+  ["Active Sessions", "/sessions"],
   ["Network", "/network"],
   ["WAN", "/wan"],
   ["Firewall", "/firewall"],
@@ -77,11 +77,21 @@ const navSections = [
     title: "Access Control",
     items: [
       ["Users", "/users", UsersIcon],
-      ["Sessions", "/sessions", Clock],
       ["Plans", "/plans", BookOpen],
       ["Voucher", "/vouchers", Key],
       ["Captive Portal", "/gateway", Smartphone],
       ["RADIUS", "/gateway", Radio],
+    ],
+  },
+  {
+    title: "Active Sessions",
+    items: [
+      ["Sessions", "/sessions", Clock],
+      ["Bandwidth Toppers", "/bandwidth-toppers", Upload],
+      ["User's Account", "/user-accounts", UsersIcon],
+      ["Login Status", "/login-status", FileCheck],
+      ["Login Log", "/login-log", BookOpen],
+      ["Logout Log", "/logout-log", AlertTriangle],
     ],
   },
   {
@@ -3013,6 +3023,27 @@ function SimpleListPage({ path, title }: { path: string; title: string }) {
   );
 }
 
+function PlannedSessionPage({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricTile label="Module" value="Planned" tone="blue" />
+        <MetricTile label="Data Source" value="Next" tone="cyan" />
+        <MetricTile label="Status" value="UI Ready" tone="green" />
+      </section>
+      <section className="glass-panel rounded-xl border border-[#0d274c] p-5">
+        <div>
+          <h1 className="text-xl font-semibold text-white">{title}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
+        </div>
+        <div className="mt-5 rounded-2xl border border-[#0f223d] bg-[#081223] p-4 text-sm text-slate-300">
+          This section is reserved for the next development slice. We will connect backend data, filters, export, and live session actions when the module API is designed.
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MetricTile({
   label,
   value,
@@ -3205,6 +3236,11 @@ export default function Shell() {
             <Route path="/plans" element={<PlansPage />} />
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/sessions" element={<SimpleListPage path="/sessions/active" title="Sessions" />} />
+            <Route path="/bandwidth-toppers" element={<PlannedSessionPage title="Bandwidth Toppers" description="Identify users and sessions consuming the most bandwidth across selected time windows, interfaces, and access plans." />} />
+            <Route path="/user-accounts" element={<PlannedSessionPage title="User's Account" description="Account-oriented session view for balances, validity, current plan, voucher state, and active login associations." />} />
+            <Route path="/login-status" element={<PlannedSessionPage title="Login Status" description="Live authentication status board showing accepted, rejected, pending, and recently expired login attempts." />} />
+            <Route path="/login-log" element={<PlannedSessionPage title="Login Log" description="Historical login audit trail with username, voucher, client IP, MAC address, NAS, plan, and RADIUS result details." />} />
+            <Route path="/logout-log" element={<PlannedSessionPage title="Logout Log" description="Historical logout and disconnect log with session duration, consumed data, disconnect reason, and accounting status." />} />
             <Route path="/network" element={<NetworkInterfacesPage />} />
             <Route path="/routing" element={<StaticRoutesPage />} />
             <Route path="/port-forwarding" element={<PortForwardingPage />} />
