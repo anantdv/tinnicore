@@ -8,6 +8,7 @@ from app.models.license import License, LicenseModule
 from app.models.network import (
     DhcpScope,
     DnsSetting,
+    DynamicDnsProfile,
     NetworkInterface,
     StaticRoute,
     Vlan,
@@ -38,6 +39,7 @@ __all__ = [
     "Vlan",
     "DhcpScope",
     "DnsSetting",
+    "DynamicDnsProfile",
     "StaticRoute",
     "WanInterface",
     "WanHealthStatus",

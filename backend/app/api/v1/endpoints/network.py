@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.models.auth import User
-from app.models.network import DhcpScope, DnsSetting, NetworkInterface, StaticRoute, Vlan
+from app.models.network import DhcpScope, DnsSetting, DynamicDnsProfile, NetworkInterface, StaticRoute, Vlan
 from app.schemas.gateway import GatewayApplyRequest, GatewayApplyResult
 from app.services.gateway import GatewayService
 from dataclasses import asdict
@@ -84,6 +84,23 @@ class DnsSettingPayload(BaseModel):
     search_domain: str | None = Field(default=None, max_length=128)
     cache_size: int = Field(default=1000, ge=0, le=100000)
     local_ttl: int = Field(default=300, ge=0, le=86400)
+
+
+class DynamicDnsPayload(BaseModel):
+    profile_name: str = Field(min_length=1, max_length=128)
+    enabled: bool = True
+    provider: str = Field(default="custom", max_length=64)
+    protocol: str = Field(default="dyndns2", max_length=64)
+    server: str | None = Field(default=None, max_length=255)
+    hostnames: str = Field(min_length=1, max_length=512)
+    username: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+    interface_name: str | None = Field(default=None, max_length=64)
+    use_ssl: bool = True
+    check_url: str | None = Field(default=None, max_length=255)
+    update_interval_minutes: int = Field(default=5, ge=1, le=1440)
+    force_update_days: int | None = Field(default=None, ge=1, le=365)
+    status: str = Field(default="active", pattern="^(active|disabled|draft)$")
 
 
 def _live_interfaces() -> dict[str, dict]:
@@ -202,6 +219,26 @@ def _dns_setting_dict(item: DnsSetting) -> dict:
         "search_domain": item.search_domain,
         "cache_size": item.cache_size,
         "local_ttl": item.local_ttl,
+    }
+
+
+def _dyndns_profile_dict(item: DynamicDnsProfile) -> dict:
+    return {
+        "id": item.id,
+        "profile_name": item.profile_name,
+        "enabled": item.enabled,
+        "provider": item.provider,
+        "protocol": item.protocol,
+        "server": item.server,
+        "hostnames": item.hostnames,
+        "username": item.username,
+        "password": item.password,
+        "interface_name": item.interface_name,
+        "use_ssl": item.use_ssl,
+        "check_url": item.check_url,
+        "update_interval_minutes": item.update_interval_minutes,
+        "force_update_days": item.force_update_days,
+        "status": item.status,
     }
 
 
@@ -336,6 +373,61 @@ def delete_dns_setting(dns_id: int, db: Session = Depends(get_db), _: User = Dep
     db.delete(item)
     db.commit()
     return {"message": "DNS setting deleted"}
+
+
+@router.get("/dyndns")
+def dyndns_profiles(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> list[dict]:
+    return [_dyndns_profile_dict(item) for item in db.query(DynamicDnsProfile).order_by(DynamicDnsProfile.id.asc()).all()]
+
+
+@router.post("/dyndns")
+def create_dyndns_profile(payload: DynamicDnsPayload, db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict:
+    item = DynamicDnsProfile(**payload.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _dyndns_profile_dict(item)
+
+
+@router.patch("/dyndns/{profile_id}")
+def update_dyndns_profile(profile_id: int, payload: DynamicDnsPayload, db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict:
+    item = db.query(DynamicDnsProfile).filter(DynamicDnsProfile.id == profile_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="DynDNS profile not found")
+    for key, value in payload.model_dump().items():
+        setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return _dyndns_profile_dict(item)
+
+
+@router.delete("/dyndns/{profile_id}")
+def delete_dyndns_profile(profile_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, str]:
+    item = db.query(DynamicDnsProfile).filter(DynamicDnsProfile.id == profile_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="DynDNS profile not found")
+    db.delete(item)
+    db.commit()
+    return {"message": "DynDNS profile deleted"}
+
+
+@router.post("/dyndns/apply")
+def apply_dyndns(payload: GatewayApplyRequest | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> GatewayApplyResult:
+    payload = payload or GatewayApplyRequest()
+    service = GatewayService(db)
+    outcome = service.build_apply_plan("dyndns", current_user.id, dry_run=payload.dry_run, execute=payload.execute)
+    return GatewayApplyResult(
+        job_id=outcome.job.id,
+        component=outcome.job.component,
+        status=outcome.status,
+        dry_run=outcome.job.dry_run,
+        rendered_configs=[asdict(item) for item in outcome.rendered_configs],
+        commands=[asdict(item) for item in outcome.commands],
+        file_writes=[asdict(item) for item in outcome.file_writes],
+        command_results=[asdict(item) for item in outcome.command_results],
+        executed=outcome.executed,
+        message=outcome.error_message or ("DynDNS configuration applied" if outcome.executed else "DynDNS configuration plan built"),
+    )
 
 
 @router.post("/apply")

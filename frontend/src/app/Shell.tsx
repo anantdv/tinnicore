@@ -70,6 +70,7 @@ const navSections = [
       ["Routing", "/routing", Network],
       ["Port Forwarding", "/port-forwarding", Layers2],
       ["DHCP & DNS", "/dhcp-dns", Globe],
+      ["DynDNS", "/dyndns", RefreshCw],
     ],
   },
   {
@@ -1086,6 +1087,43 @@ const defaultDnsSettingForm: DnsSettingForm = {
   local_ttl: 300,
 };
 
+type DynamicDnsProfileItem = {
+  id: number;
+  profile_name: string;
+  enabled: boolean;
+  provider: string;
+  protocol: string;
+  server: string | null;
+  hostnames: string;
+  username: string;
+  password: string;
+  interface_name: string | null;
+  use_ssl: boolean;
+  check_url: string | null;
+  update_interval_minutes: number;
+  force_update_days: number | null;
+  status: "active" | "disabled" | "draft";
+};
+
+type DynamicDnsProfileForm = Omit<DynamicDnsProfileItem, "id">;
+
+const defaultDynamicDnsProfileForm: DynamicDnsProfileForm = {
+  profile_name: "",
+  enabled: true,
+  provider: "custom",
+  protocol: "dyndns2",
+  server: "",
+  hostnames: "",
+  username: "",
+  password: "",
+  interface_name: "",
+  use_ssl: true,
+  check_url: "https://api.ipify.org",
+  update_interval_minutes: 5,
+  force_update_days: 30,
+  status: "active",
+};
+
 type NetworkInterfaceForm = {
   role: "wan" | "lan" | "unassigned";
   ip_mode: "dhcp" | "static";
@@ -1964,6 +2002,150 @@ function DhcpDnsPage() {
               </div>
             </ReferencePanel>
           </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DynamicDnsPage() {
+  const queryClient = useQueryClient();
+  const interfaces = useQuery<NetworkInterfaceItem[]>({ queryKey: ["/network/interfaces"], queryFn: () => getList<NetworkInterfaceItem[]>("/network/interfaces") });
+  const profiles = useQuery<DynamicDnsProfileItem[]>({ queryKey: ["/network/dyndns"], queryFn: () => getList<DynamicDnsProfileItem[]>("/network/dyndns") });
+  const rows = profiles.data ?? [];
+  const interfaceRows = interfaces.data ?? [];
+  const [selectedProfile, setSelectedProfile] = useState<DynamicDnsProfileItem | null>(null);
+  const [form, setForm] = useState<DynamicDnsProfileForm>(defaultDynamicDnsProfileForm);
+
+  const resetForm = () => {
+    setSelectedProfile(null);
+    setForm(defaultDynamicDnsProfileForm);
+  };
+
+  const patchForm = <K extends keyof DynamicDnsProfileForm>(key: K, value: DynamicDnsProfileForm[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const selectProfile = (profile: DynamicDnsProfileItem) => {
+    setSelectedProfile(profile);
+    setForm({
+      profile_name: profile.profile_name,
+      enabled: profile.enabled,
+      provider: profile.provider,
+      protocol: profile.protocol,
+      server: profile.server ?? "",
+      hostnames: profile.hostnames,
+      username: profile.username,
+      password: profile.password,
+      interface_name: profile.interface_name ?? "",
+      use_ssl: profile.use_ssl,
+      check_url: profile.check_url ?? "",
+      update_interval_minutes: profile.update_interval_minutes,
+      force_update_days: profile.force_update_days,
+      status: profile.status,
+    });
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: ({ id, payload }: { id?: number; payload: DynamicDnsProfileForm }) =>
+      id ? updateRecord<DynamicDnsProfileItem>(`/network/dyndns/${id}`, payload) : createRecord<DynamicDnsProfileItem>("/network/dyndns", payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/network/dyndns"] });
+      resetForm();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteRecord(`/network/dyndns/${id}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/network/dyndns"] });
+      resetForm();
+    },
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: () => createRecord<{ status: string; message: string; rendered_configs?: Array<{ content: string }> }>("/network/dyndns/apply", { dry_run: true, execute: false }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/gateway/jobs"] });
+    },
+  });
+
+  const interfaceOptions: Array<[string, string]> = [["", "Auto / Web Check"], ...interfaceRows.map((item) => [item.name, `${item.name} (${item.role.toUpperCase()})`] as [string, string])];
+  const saveDisabled = saveMutation.isPending || !form.profile_name || !form.hostnames || !form.username || !form.password;
+
+  return (
+    <div className="space-y-3">
+      <section className="grid gap-3 md:grid-cols-4">
+        <MetricTile label="Profiles" value={rows.length} tone="blue" />
+        <MetricTile label="Enabled" value={rows.filter((item) => item.enabled && item.status === "active").length} tone="green" />
+        <MetricTile label="Providers" value={new Set(rows.map((item) => item.provider)).size} tone="cyan" />
+        <MetricTile label="WAN Sources" value={rows.filter((item) => item.interface_name).length || "Auto"} tone="amber" />
+      </section>
+
+      <section className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="rounded-lg border border-[#0d274c] bg-[#020813] p-4 shadow-glow">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h1 className="text-sm font-semibold uppercase text-slate-200">DynDNS Profiles</h1>
+              <p className="text-xs text-slate-500">Profiles used to generate ddclient configuration.</p>
+            </div>
+            <button onClick={resetForm} className="rounded border border-[#0f223d] bg-[#081223] p-2 text-slate-300" title="Add DynDNS profile">
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {rows.map((profile) => (
+              <button
+                key={profile.id}
+                onClick={() => selectProfile(profile)}
+                className={`w-full rounded-lg border p-3 text-left transition ${selectedProfile?.id === profile.id ? "border-blue-500/50 bg-blue-600/20" : "border-[#0f223d] bg-[#081223] hover:bg-[#0c2041]"}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-bold text-white">{profile.profile_name}</div>
+                    <div className="mt-1 text-xs uppercase text-blue-300">{profile.provider} · {profile.protocol}</div>
+                  </div>
+                  <StatusPill status={profile.enabled && profile.status === "active" ? "Online" : "Disabled"} />
+                </div>
+                <div className="mt-2 truncate text-xs text-slate-400">{profile.hostnames}</div>
+                <div className="mt-1 text-xs text-slate-500">Source {profile.interface_name || "web check"} · every {profile.update_interval_minutes} min</div>
+              </button>
+            ))}
+            {!rows.length ? <div className="rounded-lg border border-[#0f223d] bg-[#081223] p-4 text-sm text-slate-400">No DynDNS profiles configured yet.</div> : null}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <ReferencePanel title={selectedProfile ? "Edit DynDNS Profile" : "New DynDNS Profile"}>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <NetworkSelect label="Enable" value={String(form.enabled)} onChange={(value) => patchForm("enabled", value === "true")} options={[["true", "Enable"], ["false", "Disable"]]} />
+              <NetworkInput label="Profile Name" value={form.profile_name} onChange={(value) => patchForm("profile_name", value)} />
+              <NetworkSelect label="Provider" value={form.provider} onChange={(value) => patchForm("provider", value)} options={[["custom", "Custom"], ["cloudflare", "Cloudflare"], ["noip", "No-IP"], ["duckdns", "DuckDNS"], ["dyndns", "DynDNS"], ["namecheap", "Namecheap"]]} />
+              <NetworkSelect label="Protocol" value={form.protocol} onChange={(value) => patchForm("protocol", value)} options={[["dyndns2", "dyndns2"], ["cloudflare", "cloudflare"], ["duckdns", "duckdns"], ["namecheap", "namecheap"], ["googledomains", "Google Domains"]]} />
+              <NetworkInput label="Server" value={form.server ?? ""} onChange={(value) => patchForm("server", value)} />
+              <NetworkInput label="Hostnames" value={form.hostnames} onChange={(value) => patchForm("hostnames", value)} />
+              <NetworkInput label="Username / Login" value={form.username} onChange={(value) => patchForm("username", value)} />
+              <NetworkInput label="Password / Token" value={form.password} onChange={(value) => patchForm("password", value)} />
+              <NetworkSelect label="WAN Interface" value={form.interface_name ?? ""} onChange={(value) => patchForm("interface_name", value)} options={interfaceOptions} />
+              <NetworkSelect label="SSL" value={String(form.use_ssl)} onChange={(value) => patchForm("use_ssl", value === "true")} options={[["true", "Enable"], ["false", "Disable"]]} />
+              <NetworkInput label="Public IP Check URL" value={form.check_url ?? ""} onChange={(value) => patchForm("check_url", value)} />
+              <NetworkInput label="Update Interval Minutes" value={String(form.update_interval_minutes)} onChange={(value) => patchForm("update_interval_minutes", Number(value.replace(/[^\d]/g, "") || 1))} />
+              <NetworkInput label="Force Update Days" value={form.force_update_days == null ? "" : String(form.force_update_days)} onChange={(value) => patchForm("force_update_days", value ? Number(value.replace(/[^\d]/g, "") || 1) : null)} />
+              <NetworkSelect label="Status" value={form.status} onChange={(value) => patchForm("status", value as DynamicDnsProfileForm["status"])} options={[["active", "Active"], ["disabled", "Disabled"], ["draft", "Draft"]]} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <ToolbarButton icon={<FileCheck className="h-4 w-4" />} label={selectedProfile ? "Update Profile" : "Save Profile"} onClick={() => saveMutation.mutate({ id: selectedProfile?.id, payload: form })} disabled={saveDisabled} />
+              <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} label="Build ddclient Plan" onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} />
+              {selectedProfile ? <ToolbarButton icon={<AlertTriangle className="h-4 w-4" />} label="Delete" onClick={() => deleteMutation.mutate(selectedProfile.id)} danger /> : null}
+            </div>
+          </ReferencePanel>
+
+          <ReferencePanel title="ddclient Preview">
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border border-[#0f223d] bg-[#081223] p-4 text-xs leading-5 text-slate-300">
+              {applyMutation.data?.rendered_configs?.[0]?.content ?? "Use Build ddclient Plan to preview the generated configuration. Live apply will be tested when the server is available."}
+            </pre>
+            {applyMutation.data?.message ? <div className="mt-3 text-sm text-blue-300">{applyMutation.data.message}</div> : null}
+          </ReferencePanel>
         </div>
       </section>
     </div>
@@ -3027,6 +3209,7 @@ export default function Shell() {
             <Route path="/routing" element={<StaticRoutesPage />} />
             <Route path="/port-forwarding" element={<PortForwardingPage />} />
             <Route path="/dhcp-dns" element={<DhcpDnsPage />} />
+            <Route path="/dyndns" element={<DynamicDnsPage />} />
             <Route path="/wan" element={<SimpleListPage path="/wan/interfaces" title="WAN" />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/gateway" element={<GatewayPage />} />

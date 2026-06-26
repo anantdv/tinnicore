@@ -44,6 +44,7 @@ def preview(db: Session = Depends(get_db), _: User = Depends(get_current_user)) 
         "freeradius": asdict(service.render_freeradius_config()),
         "hotspot": asdict(service.render_chilli_config()),
         "firewall": asdict(service.render_firewall_config()),
+        "dyndns": asdict(service.render_ddclient_config()),
     }
 
 

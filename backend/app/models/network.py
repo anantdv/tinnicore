@@ -67,6 +67,26 @@ class DnsSetting(TimestampMixin, Base):
     local_ttl: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
 
 
+class DynamicDnsProfile(TimestampMixin, Base):
+    __tablename__ = "network_dyndns_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), default="custom", nullable=False)
+    protocol: Mapped[str] = mapped_column(String(64), default="dyndns2", nullable=False)
+    server: Mapped[str | None] = mapped_column(String(255))
+    hostnames: Mapped[str] = mapped_column(String(512), nullable=False)
+    username: Mapped[str] = mapped_column(String(255), nullable=False)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+    interface_name: Mapped[str | None] = mapped_column(String(64))
+    use_ssl: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    check_url: Mapped[str | None] = mapped_column(String(255))
+    update_interval_minutes: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    force_update_days: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+
+
 class StaticRoute(TimestampMixin, Base):
     __tablename__ = "network_static_routes"
 
