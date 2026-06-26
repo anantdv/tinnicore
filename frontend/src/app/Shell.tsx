@@ -831,6 +831,52 @@ type PlanItem = {
   idle_timeout_minutes: number | null;
   concurrent_sessions: number;
   status: string;
+  use_for_new_vouchers: boolean;
+  voucher_type: string;
+  random_user_id_string_type: string;
+  random_user_id_prefix: string;
+  password_type: string;
+  voucher_password: string | null;
+  currency_type: string;
+  plan_charge: number | null;
+  login_method: string;
+  mac_binding: boolean;
+  mobile_registration: boolean;
+  account_validity_type: string;
+  account_validity_days: number | null;
+  voucher_validity_days: number | null;
+  upload_limit_mode: string;
+  download_limit_mode: string;
+  delete_inactive_accounts: boolean;
+  max_inactive_days: number | null;
+};
+type PlanFormState = {
+  plan_name: string;
+  use_for_new_vouchers: "true" | "false";
+  voucher_type: string;
+  random_user_id_string_type: string;
+  random_user_id_prefix: string;
+  password_type: string;
+  voucher_password: string;
+  currency_type: string;
+  plan_charge: string;
+  login_method: string;
+  mac_binding: "true" | "false";
+  concurrent_sessions: string;
+  mobile_registration: "true" | "false";
+  account_validity_type: string;
+  account_validity_days: string;
+  voucher_validity_days: string;
+  max_duration_minutes: string;
+  max_data_mb: string;
+  upload_limit_mode: string;
+  upload_kbps: string;
+  download_limit_mode: string;
+  download_kbps: string;
+  idle_timeout_minutes: string;
+  delete_inactive_accounts: "true" | "false";
+  max_inactive_days: string;
+  status: string;
 };
 type UserFormState = {
   username: string;
@@ -2120,33 +2166,264 @@ function UsersPage() {
 }
 
 function PlansPage() {
+  const queryClient = useQueryClient();
   const plans = useQuery<PlanItem[]>({ queryKey: ["/plans"], queryFn: () => getList<PlanItem[]>("/plans") });
+  const defaultForm: PlanFormState = {
+    plan_name: "",
+    use_for_new_vouchers: "true",
+    voucher_type: "login",
+    random_user_id_string_type: "numeric",
+    random_user_id_prefix: "date_of_month",
+    password_type: "fixed",
+    voucher_password: "pass123",
+    currency_type: "INR",
+    plan_charge: "",
+    login_method: "default",
+    mac_binding: "false",
+    concurrent_sessions: "0",
+    mobile_registration: "false",
+    account_validity_type: "days_from_first_login",
+    account_validity_days: "1",
+    voucher_validity_days: "10",
+    max_duration_minutes: "",
+    max_data_mb: "",
+    upload_limit_mode: "enforce_limit",
+    upload_kbps: "",
+    download_limit_mode: "enforce_limit",
+    download_kbps: "",
+    idle_timeout_minutes: "30",
+    delete_inactive_accounts: "true",
+    max_inactive_days: "30",
+    status: "active",
+  };
+  const [selectedPlan, setSelectedPlan] = useState<PlanItem | null>(null);
+  const [form, setForm] = useState<PlanFormState>(defaultForm);
+  const updateForm = (key: keyof PlanFormState, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const numberOrNull = (value: string) => {
+    const parsed = Number(value);
+    return value === "" || Number.isNaN(parsed) ? null : parsed;
+  };
+  const payloadFromForm = () => ({
+    plan_name: form.plan_name,
+    download_kbps: form.download_limit_mode === "no_limit" ? 0 : Number(form.download_kbps || 0),
+    upload_kbps: form.upload_limit_mode === "no_limit" ? 0 : Number(form.upload_kbps || 0),
+    max_data_mb: form.max_data_mb === "" ? null : Number(form.max_data_mb),
+    max_duration_minutes: form.max_duration_minutes === "" ? null : Number(form.max_duration_minutes),
+    idle_timeout_minutes: numberOrNull(form.idle_timeout_minutes),
+    concurrent_sessions: Number(form.concurrent_sessions || 0),
+    status: form.status,
+    use_for_new_vouchers: form.use_for_new_vouchers === "true",
+    voucher_type: form.voucher_type,
+    random_user_id_string_type: form.random_user_id_string_type,
+    random_user_id_prefix: form.random_user_id_prefix,
+    password_type: form.password_type,
+    voucher_password: form.voucher_password || null,
+    currency_type: form.currency_type,
+    plan_charge: numberOrNull(form.plan_charge),
+    login_method: form.login_method,
+    mac_binding: form.mac_binding === "true",
+    mobile_registration: form.mobile_registration === "true",
+    account_validity_type: form.account_validity_type,
+    account_validity_days: numberOrNull(form.account_validity_days),
+    voucher_validity_days: numberOrNull(form.voucher_validity_days),
+    upload_limit_mode: form.upload_limit_mode,
+    download_limit_mode: form.download_limit_mode,
+    delete_inactive_accounts: form.delete_inactive_accounts === "true",
+    max_inactive_days: numberOrNull(form.max_inactive_days),
+  });
+  const createPlan = useMutation({
+    mutationFn: () => createRecord<PlanItem>("/plans", payloadFromForm()),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/plans"] });
+      setSelectedPlan(null);
+      setForm(defaultForm);
+    },
+  });
+  const updatePlan = useMutation({
+    mutationFn: () => updateRecord<PlanItem>(`/plans/${selectedPlan?.id ?? 0}`, payloadFromForm()),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/plans"] });
+      setSelectedPlan(null);
+      setForm(defaultForm);
+    },
+  });
+  const deletePlan = useMutation({
+    mutationFn: (planId: number) => deleteRecord(`/plans/${planId}`),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/plans"] });
+    },
+  });
+  const editPlan = (plan: PlanItem) => {
+    setSelectedPlan(plan);
+    setForm({
+      plan_name: plan.plan_name,
+      use_for_new_vouchers: String(plan.use_for_new_vouchers) as "true" | "false",
+      voucher_type: plan.voucher_type,
+      random_user_id_string_type: plan.random_user_id_string_type,
+      random_user_id_prefix: plan.random_user_id_prefix,
+      password_type: plan.password_type,
+      voucher_password: plan.voucher_password ?? "",
+      currency_type: plan.currency_type,
+      plan_charge: plan.plan_charge == null ? "" : String(plan.plan_charge),
+      login_method: plan.login_method,
+      mac_binding: String(plan.mac_binding) as "true" | "false",
+      concurrent_sessions: String(plan.concurrent_sessions),
+      mobile_registration: String(plan.mobile_registration) as "true" | "false",
+      account_validity_type: plan.account_validity_type,
+      account_validity_days: plan.account_validity_days == null ? "" : String(plan.account_validity_days),
+      voucher_validity_days: plan.voucher_validity_days == null ? "" : String(plan.voucher_validity_days),
+      max_duration_minutes: plan.max_duration_minutes == null ? "" : String(plan.max_duration_minutes),
+      max_data_mb: plan.max_data_mb == null ? "" : String(plan.max_data_mb),
+      upload_limit_mode: plan.upload_limit_mode,
+      upload_kbps: String(plan.upload_kbps),
+      download_limit_mode: plan.download_limit_mode,
+      download_kbps: String(plan.download_kbps),
+      idle_timeout_minutes: plan.idle_timeout_minutes == null ? "" : String(plan.idle_timeout_minutes),
+      delete_inactive_accounts: String(plan.delete_inactive_accounts) as "true" | "false",
+      max_inactive_days: plan.max_inactive_days == null ? "" : String(plan.max_inactive_days),
+      status: plan.status,
+    });
+  };
   const rows =
     plans.data?.length
       ? plans.data
       : [
-          { id: 1, plan_name: "Premium 50Mbps", download_kbps: 51200, upload_kbps: 10240, max_data_mb: null, max_duration_minutes: 4320, idle_timeout_minutes: 30, concurrent_sessions: 2, status: "active" },
-          { id: 2, plan_name: "Standard 20Mbps", download_kbps: 20480, upload_kbps: 5120, max_data_mb: null, max_duration_minutes: 2880, idle_timeout_minutes: 30, concurrent_sessions: 1, status: "active" },
-          { id: 3, plan_name: "Basic 10Mbps", download_kbps: 10240, upload_kbps: 2048, max_data_mb: null, max_duration_minutes: 1440, idle_timeout_minutes: 20, concurrent_sessions: 1, status: "active" },
+          { id: 1, plan_name: "Premium 50Mbps", download_kbps: 51200, upload_kbps: 10240, max_data_mb: null, max_duration_minutes: 4320, idle_timeout_minutes: 30, concurrent_sessions: 2, status: "active", use_for_new_vouchers: true, voucher_type: "login", random_user_id_string_type: "numeric", random_user_id_prefix: "date_of_month", password_type: "fixed", voucher_password: "pass123", currency_type: "INR", plan_charge: 499, login_method: "default", mac_binding: false, mobile_registration: false, account_validity_type: "days_from_first_login", account_validity_days: 3, voucher_validity_days: 10, upload_limit_mode: "enforce_limit", download_limit_mode: "enforce_limit", delete_inactive_accounts: true, max_inactive_days: 30 },
+          { id: 2, plan_name: "Standard 20Mbps", download_kbps: 20480, upload_kbps: 5120, max_data_mb: null, max_duration_minutes: 2880, idle_timeout_minutes: 30, concurrent_sessions: 1, status: "active", use_for_new_vouchers: true, voucher_type: "login", random_user_id_string_type: "numeric", random_user_id_prefix: "date_of_month", password_type: "fixed", voucher_password: "pass123", currency_type: "INR", plan_charge: 249, login_method: "default", mac_binding: false, mobile_registration: false, account_validity_type: "days_from_first_login", account_validity_days: 2, voucher_validity_days: 10, upload_limit_mode: "enforce_limit", download_limit_mode: "enforce_limit", delete_inactive_accounts: true, max_inactive_days: 30 },
+          { id: 3, plan_name: "Basic 10Mbps", download_kbps: 10240, upload_kbps: 2048, max_data_mb: null, max_duration_minutes: 1440, idle_timeout_minutes: 20, concurrent_sessions: 1, status: "active", use_for_new_vouchers: true, voucher_type: "login", random_user_id_string_type: "numeric", random_user_id_prefix: "date_of_month", password_type: "fixed", voucher_password: "pass123", currency_type: "INR", plan_charge: 99, login_method: "default", mac_binding: false, mobile_registration: false, account_validity_type: "days_from_first_login", account_validity_days: 1, voucher_validity_days: 10, upload_limit_mode: "enforce_limit", download_limit_mode: "enforce_limit", delete_inactive_accounts: true, max_inactive_days: 30 },
         ];
+  const activePlans = rows.filter((row) => row.status === "active").length;
+  const averageDownload = rows.length ? Math.round(rows.reduce((total, row) => total + row.download_kbps, 0) / rows.length / 1024) : 0;
+  const Field = ({ label, field, type = "text", placeholder }: { label: string; field: keyof PlanFormState; type?: "text" | "number" | "password"; placeholder?: string }) => (
+    <label className="block">
+      <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</span>
+      <input
+        value={form[field]}
+        onChange={(event) => updateForm(field, type === "number" ? event.target.value.replace(/[^\d]/g, "") : event.target.value)}
+        type={type === "password" ? "password" : "text"}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-[#0f2748] bg-[#071323] px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-400"
+      />
+    </label>
+  );
+  const Select = ({ label, field, options }: { label: string; field: keyof PlanFormState; options: Array<[string, string]> }) => (
+    <label className="block">
+      <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</span>
+      <select
+        value={form[field]}
+        onChange={(event) => updateForm(field, event.target.value)}
+        className="w-full rounded-xl border border-[#0f2748] bg-[#071323] px-3 py-2.5 text-sm text-white outline-none transition focus:border-blue-400"
+      >
+        {options.map(([value, labelText]) => <option key={value} value={value}>{labelText}</option>)}
+      </select>
+    </label>
+  );
+  const FormGroup = ({ title, children }: { title: string; children: ReactNode }) => (
+    <section className="rounded-2xl border border-[#0f2748] bg-[#06101f] p-4">
+      <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.22em] text-blue-300">{title}</h2>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{children}</div>
+    </section>
+  );
 
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
         <MetricTile label="Total Plans" value={rows.length} tone="blue" />
-        <MetricTile label="Active" value={rows.filter((row) => row.status === "active").length} tone="green" />
-        <MetricTile label="Scheduled" value={0} tone="cyan" />
+        <MetricTile label="Active" value={activePlans} tone="green" />
+        <MetricTile label="Voucher Enabled" value={rows.filter((row) => row.use_for_new_vouchers).length} tone="cyan" />
         <MetricTile label="Disabled" value={rows.filter((row) => row.status !== "active").length} tone="red" />
-        <MetricTile label="Avg Speed" value="28 Mbps" tone="amber" />
+        <MetricTile label="Avg Speed" value={`${averageDownload} Mbps`} tone="amber" />
       </section>
 
       <section className="glass-panel rounded-xl border border-[#0d274c] p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-white">Access Plans</h1>
-            <p className="text-sm text-slate-400">Reference-style plan grid using mock data until backend policy rules are finalized.</p>
+            <h1 className="text-xl font-semibold text-white">{selectedPlan ? `Edit ${selectedPlan.plan_name}` : "Create Usage Plan"}</h1>
+            <p className="text-sm text-slate-400">Fields are based on the prepaid usage plan reference and mapped to hotspot/RADIUS enforcement values.</p>
           </div>
-          <button className="rounded-lg border border-[#0f223d] bg-[#081223] px-3.5 py-2 text-xs font-semibold text-slate-300">New Plan</button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedPlan(null);
+              setForm(defaultForm);
+            }}
+            className="rounded-lg border border-[#0f223d] bg-[#081223] px-3.5 py-2 text-xs font-semibold text-slate-300"
+          >
+            New Plan
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <FormGroup title="Plan details">
+            <Select label="Use for new vouchers" field="use_for_new_vouchers" options={[["true", "Enable"], ["false", "Disable"]]} />
+            <Field label="Plan name" field="plan_name" placeholder="Required" />
+            <Select label="Voucher type" field="voucher_type" options={[["login", "Login"], ["voucher", "Voucher"], ["pin_only", "PIN Only"]]} />
+            <Select label="Random user id string" field="random_user_id_string_type" options={[["numeric", "Numeric"], ["alpha_numeric", "Alpha Numeric"], ["mobile", "Mobile Number"]]} />
+            <Select label="Random user id prefix" field="random_user_id_prefix" options={[["date_of_month", "Date of Month"], ["plan_code", "Plan Code"], ["none", "None"]]} />
+            <Select label="Password type" field="password_type" options={[["fixed", "Fixed"], ["random_numeric", "Random Numeric"], ["random_alpha_numeric", "Random Alpha Numeric"], ["none", "None"]]} />
+            <Field label="Password" field="voucher_password" type="password" placeholder="pass123" />
+          </FormGroup>
+
+          <FormGroup title="Pricing">
+            <Select label="Currency type" field="currency_type" options={[["INR", "Indian Rupee"], ["USD", "US Dollar"], ["EUR", "Euro"], ["GBP", "British Pound"]]} />
+            <Field label="Plan charge" field="plan_charge" type="number" placeholder="Required" />
+          </FormGroup>
+
+          <FormGroup title="Account settings">
+            <Select label="Login method" field="login_method" options={[["default", "Default"], ["username_password", "Username + Password"], ["voucher_code", "Voucher Code"], ["mac_based", "MAC Based"]]} />
+            <Select label="MAC binding" field="mac_binding" options={[["false", "Disable"], ["true", "Enable"]]} />
+            <Select label="Concurrent login count" field="concurrent_sessions" options={[["0", "Unlimited"], ["1", "1"], ["2", "2"], ["3", "3"], ["5", "5"], ["10", "10"]]} />
+            <Select label="Mobile registration" field="mobile_registration" options={[["false", "Disable"], ["true", "Enable"]]} />
+            <Select label="Account validity type" field="account_validity_type" options={[["days_from_first_login", "Number of Days from First Login"], ["fixed_days", "Fixed Number of Days"], ["expiry_date", "Expiry Date Based"]]} />
+            <Field label="Account validity days" field="account_validity_days" type="number" />
+            <Field label="Voucher validity days" field="voucher_validity_days" type="number" />
+          </FormGroup>
+
+          <FormGroup title="Account limits">
+            <Field label="Time quota minutes" field="max_duration_minutes" type="number" placeholder="Blank = No limit" />
+            <Field label="Data transfer quota MB" field="max_data_mb" type="number" placeholder="Blank = No limit" />
+            <Select label="Maximum upload bandwidth" field="upload_limit_mode" options={[["enforce_limit", "Enforce Limit"], ["no_limit", "No Limit"]]} />
+            <Field label="Upload Kbps" field="upload_kbps" type="number" placeholder="Required when enforced" />
+            <Select label="Maximum download bandwidth" field="download_limit_mode" options={[["enforce_limit", "Enforce Limit"], ["no_limit", "No Limit"]]} />
+            <Field label="Download Kbps" field="download_kbps" type="number" placeholder="Required when enforced" />
+            <Field label="Idle timeout minutes" field="idle_timeout_minutes" type="number" />
+          </FormGroup>
+
+          <FormGroup title="Account inactivity">
+            <Select label="Delete inactive accounts" field="delete_inactive_accounts" options={[["true", "Enable"], ["false", "Disable"]]} />
+            <Field label="Maximum inactive days" field="max_inactive_days" type="number" />
+            <Select label="Plan status" field="status" options={[["active", "Active"], ["disabled", "Disabled"], ["draft", "Draft"]]} />
+          </FormGroup>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => (selectedPlan ? updatePlan.mutate() : createPlan.mutate())}
+              disabled={!form.plan_name || createPlan.isPending || updatePlan.isPending}
+              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
+            >
+              {selectedPlan ? "Update plan" : "Save plan"}
+            </button>
+            {selectedPlan ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPlan(null);
+                  setForm(defaultForm);
+                }}
+                className="rounded-xl border border-[#17365f] px-5 py-3 text-sm font-semibold text-slate-300"
+              >
+                Cancel edit
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="glass-panel rounded-xl border border-[#0d274c] p-5">
+        <div className="mb-4">
+          <h1 className="text-xl font-semibold text-white">Access Plans</h1>
+          <p className="text-sm text-slate-400">Saved prepaid usage plans and their enforcement limits.</p>
         </div>
         <div className="overflow-hidden rounded-2xl border border-[#0f223d]">
           <table className="w-full text-sm">
@@ -2157,18 +2434,27 @@ function PlansPage() {
                 <th className="p-4">Upload</th>
                 <th className="p-4">Duration</th>
                 <th className="p-4">Sessions</th>
+                <th className="p-4">Charge</th>
                 <th className="p-4">Status</th>
+                <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#0f223d]">
               {rows.map((row) => (
                 <tr key={row.id} className="hover:bg-slate-900/30">
                   <td className="p-4 text-white">{row.plan_name}</td>
-                  <td className="p-4 text-slate-300">{Math.round(row.download_kbps / 1024)} Mbps</td>
-                  <td className="p-4 text-slate-300">{Math.round(row.upload_kbps / 1024)} Mbps</td>
-                  <td className="p-4 text-slate-300">{row.max_duration_minutes ?? "Unlimited"} min</td>
-                  <td className="p-4 text-slate-300">{row.concurrent_sessions}</td>
+                  <td className="p-4 text-slate-300">{row.download_limit_mode === "no_limit" ? "No Limit" : `${Math.round(row.download_kbps / 1024)} Mbps`}</td>
+                  <td className="p-4 text-slate-300">{row.upload_limit_mode === "no_limit" ? "No Limit" : `${Math.round(row.upload_kbps / 1024)} Mbps`}</td>
+                  <td className="p-4 text-slate-300">{row.max_duration_minutes ? `${row.max_duration_minutes} min` : "No Limit"}</td>
+                  <td className="p-4 text-slate-300">{row.concurrent_sessions || "Unlimited"}</td>
+                  <td className="p-4 text-slate-300">{row.plan_charge == null ? "-" : `${row.currency_type} ${row.plan_charge}`}</td>
                   <td className="p-4"><StatusPill status={row.status === "active" ? "Online" : "Disabled"} /></td>
+                  <td className="p-4">
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={() => editPlan(row)} className="rounded-lg border border-blue-500/30 px-3 py-1.5 text-xs font-semibold text-blue-300">Edit</button>
+                      <button type="button" onClick={() => deletePlan.mutate(row.id)} className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-300">Delete</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
