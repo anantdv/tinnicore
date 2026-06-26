@@ -48,8 +48,39 @@ type HotspotPortal = {
   allowed_hosts: string[];
   welcome_message: string | null;
   builder_config: PortalBuilderConfig | null;
+  server_settings: CaptivePortalServerSettings | null;
   is_active: boolean;
 };
+
+type CaptivePortalServerSettings = {
+  service: "enable" | "disable";
+  description: string;
+  nas_identifier: string;
+  authentication_method: "user_login" | "voucher_login" | "user_or_voucher" | "mac_auth";
+  captive_portal: "internal_web_server" | "external_web_server";
+  web_server_address: string;
+  web_server_port: string;
+  redirect_url_after_login: "original_request_url" | "success_page" | "custom_url";
+  account_status_after_login: "disable" | "show" | "redirect";
+  logout_shortcut_ip: string;
+};
+
+const defaultServerSettings: CaptivePortalServerSettings = {
+  service: "enable",
+  description: "HotSpot Server",
+  nas_identifier: "TINNICORE Wi-Fi",
+  authentication_method: "user_login",
+  captive_portal: "internal_web_server",
+  web_server_address: "auto_detect",
+  web_server_port: "2280",
+  redirect_url_after_login: "original_request_url",
+  account_status_after_login: "disable",
+  logout_shortcut_ip: "1.1.1.1",
+};
+
+function cloneServerSettings(settings?: CaptivePortalServerSettings | null): CaptivePortalServerSettings {
+  return { ...defaultServerSettings, ...(settings ?? {}) };
+}
 
 type PortalComponentType = "hero" | "text" | "login" | "voucher" | "button" | "image" | "features";
 
@@ -245,6 +276,38 @@ function Field({
   );
 }
 
+function SelectField<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+  help,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<[T, string]>;
+  help?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm text-slate-600">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as T)}
+        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500"
+      >
+        {options.map(([optionValue, labelText]) => (
+          <option key={optionValue} value={optionValue}>
+            {labelText}
+          </option>
+        ))}
+      </select>
+      {help ? <div className="mt-1 text-xs text-slate-500">{help}</div> : null}
+    </label>
+  );
+}
+
 function PreviewBlock({ config }: { config?: RenderedConfig }) {
   if (!config) {
     return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No preview available.</div>;
@@ -305,6 +368,7 @@ export default function GatewayPage() {
   const [portalAllowedHosts, setPortalAllowedHosts] = useState("127.0.0.1,localhost");
   const [portalWelcome, setPortalWelcome] = useState("Welcome to TINNICORE Wi-Fi");
   const [portalBuilder, setPortalBuilder] = useState<PortalBuilderConfig>(() => clonePortalBuilderConfig());
+  const [portalServerSettings, setPortalServerSettings] = useState<CaptivePortalServerSettings>(() => cloneServerSettings());
   const [selectedBuilderId, setSelectedBuilderId] = useState("login-card");
   const portalPreviewRef = useRef<HTMLDivElement | null>(null);
   const [radiusProfileName, setRadiusProfileName] = useState("guest-1h");
@@ -326,6 +390,10 @@ export default function GatewayPage() {
 
   const patchBuilderTheme = (patch: Partial<PortalBuilderConfig["theme"]>) => {
     setPortalBuilder((current) => ({ ...current, theme: { ...current.theme, ...patch } }));
+  };
+
+  const patchServerSettings = (patch: Partial<CaptivePortalServerSettings>) => {
+    setPortalServerSettings((current) => ({ ...current, ...patch }));
   };
 
   const patchBuilderComponent = (componentId: string, patch: Partial<PortalBuilderComponent>) => {
@@ -390,6 +458,7 @@ export default function GatewayPage() {
         allowed_hosts: portalAllowedHosts.split(",").map((item) => item.trim()).filter(Boolean),
         welcome_message: portalWelcome || null,
         builder_config: portalBuilder,
+        server_settings: portalServerSettings,
         is_active: true,
       }),
     onSuccess: async () => {
@@ -409,6 +478,7 @@ export default function GatewayPage() {
         allowed_hosts: portalAllowedHosts.split(",").map((item) => item.trim()).filter(Boolean),
         welcome_message: portalWelcome || null,
         builder_config: portalBuilder,
+        server_settings: portalServerSettings,
         is_active: true,
       }),
     onSuccess: async () => {
@@ -623,6 +693,7 @@ export default function GatewayPage() {
                           setPortalAllowedHosts(portal.allowed_hosts.join(","));
                           setPortalWelcome(portal.welcome_message ?? "");
                           setPortalBuilder(clonePortalBuilderConfig(portal.builder_config));
+                          setPortalServerSettings(cloneServerSettings(portal.server_settings));
                           setSelectedBuilderId(portal.builder_config?.components?.[0]?.id ?? "hero-title");
                         }}
                         className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700"
@@ -754,6 +825,72 @@ export default function GatewayPage() {
             <Field label="Success path" value={portalSuccess} onChange={setPortalSuccess} />
             <Field label="Allowed hosts" value={portalAllowedHosts} onChange={setPortalAllowedHosts} help="Comma separated hosts for UAM allow list." />
             <Field label="Welcome message" value={portalWelcome} onChange={setPortalWelcome} />
+          </div>
+
+          <div className="mt-8 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-600">Captive portal server</div>
+              <div className="mt-1 text-sm text-slate-500">Server-side hotspot settings used to render the CoovaChilli captive portal configuration.</div>
+            </div>
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Control</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <SelectField label="Service" value={portalServerSettings.service} onChange={(value) => patchServerSettings({ service: value })} options={[["enable", "Enable"], ["disable", "Disable"]]} />
+                  <Field label="Description" value={portalServerSettings.description} onChange={(value) => patchServerSettings({ description: value })} />
+                  <Field label="NAS Identifier" value={portalServerSettings.nas_identifier} onChange={(value) => patchServerSettings({ nas_identifier: value })} help="Sent into generated hotspot/RADIUS config as the NAS identity." />
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Authentication</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <SelectField
+                    label="Authentication Method"
+                    value={portalServerSettings.authentication_method}
+                    onChange={(value) => patchServerSettings({ authentication_method: value })}
+                    options={[
+                      ["user_login", "User Login"],
+                      ["voucher_login", "Voucher Login"],
+                      ["user_or_voucher", "User or Voucher"],
+                      ["mac_auth", "MAC Authentication"],
+                    ]}
+                  />
+                  <SelectField
+                    label="Captive Portal"
+                    value={portalServerSettings.captive_portal}
+                    onChange={(value) => patchServerSettings({ captive_portal: value })}
+                    options={[
+                      ["internal_web_server", "Internal Web Server"],
+                      ["external_web_server", "External Web Server"],
+                    ]}
+                  />
+                  <Field label="Web Server Address" value={portalServerSettings.web_server_address} onChange={(value) => patchServerSettings({ web_server_address: value })} help="Use auto_detect, an IP address, or a DNS name." />
+                  <Field label="Web Server Port" value={portalServerSettings.web_server_port} onChange={(value) => patchServerSettings({ web_server_port: value })} type="number" />
+                  <SelectField
+                    label="Redirect URL After Login"
+                    value={portalServerSettings.redirect_url_after_login}
+                    onChange={(value) => patchServerSettings({ redirect_url_after_login: value })}
+                    options={[
+                      ["original_request_url", "Original Request URL"],
+                      ["success_page", "Success Page"],
+                      ["custom_url", "Custom URL"],
+                    ]}
+                  />
+                  <SelectField
+                    label="Account Status After Login"
+                    value={portalServerSettings.account_status_after_login}
+                    onChange={(value) => patchServerSettings({ account_status_after_login: value })}
+                    options={[
+                      ["disable", "Disable"],
+                      ["show", "Show"],
+                      ["redirect", "Redirect"],
+                    ]}
+                  />
+                  <Field label="Logout Shortcut IP" value={portalServerSettings.logout_shortcut_ip} onChange={(value) => patchServerSettings({ logout_shortcut_ip: value })} />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mt-8 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
@@ -952,6 +1089,7 @@ export default function GatewayPage() {
                 setPortalAllowedHosts("127.0.0.1,localhost");
                 setPortalWelcome("Welcome to TINNICORE Wi-Fi");
                 setPortalBuilder(clonePortalBuilderConfig());
+                setPortalServerSettings(cloneServerSettings());
                 setSelectedBuilderId("login-card");
               }}
               className="mt-3 rounded-2xl border border-slate-200 px-4 py-3 font-semibold text-slate-700"

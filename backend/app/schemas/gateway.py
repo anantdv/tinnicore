@@ -90,6 +90,7 @@ class HotspotPortalCreate(BaseModel):
     allowed_hosts: list[str] = Field(default_factory=list)
     welcome_message: str | None = None
     builder_config: dict | None = None
+    server_settings: dict | None = None
     is_active: bool = True
 
 
@@ -101,6 +102,7 @@ class HotspotPortalUpdate(BaseModel):
     allowed_hosts: list[str] | None = None
     welcome_message: str | None = None
     builder_config: dict | None = None
+    server_settings: dict | None = None
     is_active: bool | None = None
 
 
@@ -113,6 +115,7 @@ class HotspotPortalRead(Timestamped):
     allowed_hosts: list[str]
     welcome_message: str | None = None
     builder_config: dict | None = None
+    server_settings: dict | None = None
     is_active: bool
 
 

@@ -18,6 +18,7 @@ class HotspotPortal(TimestampMixin, Base):
     allowed_hosts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     welcome_message: Mapped[str | None] = mapped_column(String(255))
     builder_config: Mapped[dict | None] = mapped_column(JSON)
+    server_settings: Mapped[dict | None] = mapped_column(JSON)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
