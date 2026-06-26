@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRecord, deleteRecord, getList, updateRecord } from "../../shared/api";
 
@@ -46,8 +47,98 @@ type HotspotPortal = {
   success_path: string;
   allowed_hosts: string[];
   welcome_message: string | null;
+  builder_config: PortalBuilderConfig | null;
   is_active: boolean;
 };
+
+type PortalComponentType = "hero" | "text" | "login" | "voucher" | "button" | "image" | "features";
+
+type PortalBuilderComponent = {
+  id: string;
+  type: PortalComponentType;
+  label: string;
+  content: string;
+  x: number;
+  y: number;
+  width: number;
+  align: "left" | "center" | "right";
+  color: string;
+  background: string;
+  imageUrl?: string;
+};
+
+type PortalBuilderConfig = {
+  theme: {
+    backgroundColor: string;
+    backgroundImage: string;
+    accentColor: string;
+    textColor: string;
+    cardColor: string;
+  };
+  components: PortalBuilderComponent[];
+};
+
+const defaultPortalBuilderConfig: PortalBuilderConfig = {
+  theme: {
+    backgroundColor: "#04111f",
+    backgroundImage: "",
+    accentColor: "#00b8ff",
+    textColor: "#f8fbff",
+    cardColor: "rgba(4, 18, 35, 0.82)",
+  },
+  components: [
+    { id: "hero-title", type: "hero", label: "Hero title", content: "Welcome to TINNICORE Wi-Fi", x: 8, y: 10, width: 52, align: "left", color: "#f8fbff", background: "transparent" },
+    { id: "hero-copy", type: "text", label: "Intro text", content: "Fast, secure guest access powered by TINNICORE OS.", x: 8, y: 28, width: 48, align: "left", color: "#9fbce4", background: "transparent" },
+    { id: "login-card", type: "login", label: "Login card", content: "Sign in with your hotspot account", x: 58, y: 14, width: 34, align: "left", color: "#f8fbff", background: "rgba(5, 22, 43, 0.88)" },
+    { id: "voucher-card", type: "voucher", label: "Voucher access", content: "Have a voucher? Enter your code and PIN.", x: 58, y: 55, width: 34, align: "left", color: "#f8fbff", background: "rgba(5, 22, 43, 0.72)" },
+    { id: "features-strip", type: "features", label: "Features", content: "Secure browsing|High speed access|Session tracking", x: 8, y: 66, width: 44, align: "left", color: "#d9ecff", background: "rgba(0, 184, 255, 0.08)" },
+  ],
+};
+
+const componentLabels: Record<PortalComponentType, string> = {
+  hero: "Hero",
+  text: "Text",
+  login: "Login Form",
+  voucher: "Voucher Form",
+  button: "Button",
+  image: "Image",
+  features: "Features",
+};
+
+function clonePortalBuilderConfig(config?: PortalBuilderConfig | null): PortalBuilderConfig {
+  return JSON.parse(JSON.stringify(config ?? defaultPortalBuilderConfig)) as PortalBuilderConfig;
+}
+
+function createPortalComponent(type: PortalComponentType, x = 12, y = 12): PortalBuilderComponent {
+  const id = `component-${Date.now()}-${Math.round(Math.random() * 10000)}`;
+  const base = {
+    id,
+    type,
+    label: componentLabels[type],
+    x,
+    y,
+    width: type === "hero" ? 48 : type === "image" ? 30 : 36,
+    align: "left" as const,
+    color: "#f8fbff",
+    background: type === "hero" || type === "text" ? "transparent" : "rgba(5, 22, 43, 0.82)",
+  };
+
+  const contentByType: Record<PortalComponentType, string> = {
+    hero: "Welcome to TINNICORE Wi-Fi",
+    text: "Add helpful instructions for guests before they connect.",
+    login: "Sign in with your hotspot account",
+    voucher: "Have a voucher? Enter your code and PIN.",
+    button: "Connect Now",
+    image: "Portal image",
+    features: "Secure browsing|High speed access|Session tracking",
+  };
+
+  return {
+    ...base,
+    content: contentByType[type],
+    imageUrl: type === "image" ? "" : undefined,
+  };
+}
 
 type RadiusProfile = {
   id: number;
@@ -213,6 +304,9 @@ export default function GatewayPage() {
   const [portalSuccess, setPortalSuccess] = useState("/status");
   const [portalAllowedHosts, setPortalAllowedHosts] = useState("127.0.0.1,localhost");
   const [portalWelcome, setPortalWelcome] = useState("Welcome to TINNICORE Wi-Fi");
+  const [portalBuilder, setPortalBuilder] = useState<PortalBuilderConfig>(() => clonePortalBuilderConfig());
+  const [selectedBuilderId, setSelectedBuilderId] = useState("login-card");
+  const portalPreviewRef = useRef<HTMLDivElement | null>(null);
   const [radiusProfileName, setRadiusProfileName] = useState("guest-1h");
   const [radiusGroupName, setRadiusGroupName] = useState("guest-1h");
   const [radiusPlanId, setRadiusPlanId] = useState("1");
@@ -227,6 +321,52 @@ export default function GatewayPage() {
   const nasDevices = useQuery<RadiusNasDevice[]>({ queryKey: ["/gateway/nas-devices"], queryFn: () => getList("/gateway/nas-devices") });
   const jobs = useQuery<GatewayApplyJob[]>({ queryKey: ["/gateway/jobs"], queryFn: () => getList("/gateway/jobs") });
   const attempts = useQuery<RadiusAuthAttempt[]>({ queryKey: ["/gateway/hotspot/attempts"], queryFn: () => getList("/gateway/hotspot/attempts") });
+
+  const selectedBuilderComponent = portalBuilder.components.find((component) => component.id === selectedBuilderId) ?? portalBuilder.components[0];
+
+  const patchBuilderTheme = (patch: Partial<PortalBuilderConfig["theme"]>) => {
+    setPortalBuilder((current) => ({ ...current, theme: { ...current.theme, ...patch } }));
+  };
+
+  const patchBuilderComponent = (componentId: string, patch: Partial<PortalBuilderComponent>) => {
+    setPortalBuilder((current) => ({
+      ...current,
+      components: current.components.map((component) => (component.id === componentId ? { ...component, ...patch } : component)),
+    }));
+  };
+
+  const addBuilderComponent = (type: PortalComponentType, x = 12, y = 12) => {
+    const component = createPortalComponent(type, x, y);
+    setPortalBuilder((current) => ({ ...current, components: [...current.components, component] }));
+    setSelectedBuilderId(component.id);
+  };
+
+  const deleteBuilderComponent = (componentId: string) => {
+    setPortalBuilder((current) => {
+      const nextComponents = current.components.filter((component) => component.id !== componentId);
+      setSelectedBuilderId(nextComponents[0]?.id ?? "");
+      return { ...current, components: nextComponents };
+    });
+  };
+
+  const handlePortalCanvasDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const bounds = portalPreviewRef.current?.getBoundingClientRect();
+    if (!bounds) {
+      return;
+    }
+    const x = Math.min(90, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100));
+    const y = Math.min(88, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100));
+    const componentId = event.dataTransfer.getData("component-id");
+    const componentType = event.dataTransfer.getData("component-type") as PortalComponentType;
+    if (componentId) {
+      patchBuilderComponent(componentId, { x: Math.round(x), y: Math.round(y) });
+      return;
+    }
+    if (componentType) {
+      addBuilderComponent(componentType, Math.round(x), Math.round(y));
+    }
+  };
 
   const applyMutation = useMutation({
     mutationFn: () =>
@@ -249,6 +389,7 @@ export default function GatewayPage() {
         success_path: portalSuccess,
         allowed_hosts: portalAllowedHosts.split(",").map((item) => item.trim()).filter(Boolean),
         welcome_message: portalWelcome || null,
+        builder_config: portalBuilder,
         is_active: true,
       }),
     onSuccess: async () => {
@@ -267,6 +408,7 @@ export default function GatewayPage() {
         success_path: portalSuccess,
         allowed_hosts: portalAllowedHosts.split(",").map((item) => item.trim()).filter(Boolean),
         welcome_message: portalWelcome || null,
+        builder_config: portalBuilder,
         is_active: true,
       }),
     onSuccess: async () => {
@@ -480,6 +622,8 @@ export default function GatewayPage() {
                           setPortalSuccess(portal.success_path);
                           setPortalAllowedHosts(portal.allowed_hosts.join(","));
                           setPortalWelcome(portal.welcome_message ?? "");
+                          setPortalBuilder(clonePortalBuilderConfig(portal.builder_config));
+                          setSelectedBuilderId(portal.builder_config?.components?.[0]?.id ?? "hero-title");
                         }}
                         className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700"
                       >
@@ -611,6 +755,183 @@ export default function GatewayPage() {
             <Field label="Allowed hosts" value={portalAllowedHosts} onChange={setPortalAllowedHosts} help="Comma separated hosts for UAM allow list." />
             <Field label="Welcome message" value={portalWelcome} onChange={setPortalWelcome} />
           </div>
+
+          <div className="mt-8 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-600">Portal studio</div>
+                <div className="mt-1 text-sm text-slate-500">Drag blocks onto the canvas, change copy/colors, and preview the login page before saving.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPortalBuilder(clonePortalBuilderConfig());
+                  setSelectedBuilderId("login-card");
+                }}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Reset template
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 xl:grid-cols-[180px_1fr_260px]">
+              <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Blocks</div>
+                <div className="mt-4 space-y-2">
+                  {(Object.keys(componentLabels) as PortalComponentType[]).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      draggable
+                      onDragStart={(event) => event.dataTransfer.setData("component-type", type)}
+                      onClick={() => addBuilderComponent(type)}
+                      className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:bg-blue-50"
+                    >
+                      {componentLabels[type]}
+                      <span className="text-blue-600">+</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                ref={portalPreviewRef}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handlePortalCanvasDrop}
+                className="relative min-h-[560px] overflow-hidden rounded-[28px] border border-slate-900 bg-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.25)]"
+                style={{
+                  backgroundColor: portalBuilder.theme.backgroundColor,
+                  backgroundImage: portalBuilder.theme.backgroundImage
+                    ? `linear-gradient(135deg, rgba(1,8,18,0.78), rgba(1,8,18,0.35)), url(${portalBuilder.theme.backgroundImage})`
+                    : "radial-gradient(circle at 25% 25%, rgba(0,184,255,0.22), transparent 32%), radial-gradient(circle at 72% 12%, rgba(37,99,235,0.18), transparent 28%)",
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              >
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:48px_48px]" />
+                <div className="absolute left-6 top-6 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.35em]" style={{ color: portalBuilder.theme.textColor }}>
+                  TINNICORE
+                </div>
+                {portalBuilder.components.map((component) => {
+                  const selected = selectedBuilderId === component.id;
+                  const baseClass = selected ? "ring-2 ring-cyan-300" : "ring-1 ring-white/10";
+                  return (
+                    <div
+                      key={component.id}
+                      draggable
+                      onClick={() => setSelectedBuilderId(component.id)}
+                      onDragStart={(event) => event.dataTransfer.setData("component-id", component.id)}
+                      className={`absolute cursor-move rounded-[22px] p-4 backdrop-blur transition hover:ring-2 hover:ring-cyan-300 ${baseClass}`}
+                      style={{
+                        left: `${component.x}%`,
+                        top: `${component.y}%`,
+                        width: `${component.width}%`,
+                        color: component.color,
+                        background: component.background,
+                        textAlign: component.align,
+                        borderColor: selected ? portalBuilder.theme.accentColor : "rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      {component.type === "hero" ? <div className="text-3xl font-black leading-tight tracking-tight">{component.content}</div> : null}
+                      {component.type === "text" ? <div className="text-sm leading-6">{component.content}</div> : null}
+                      {component.type === "button" ? (
+                        <div className="inline-flex rounded-full px-5 py-3 text-sm font-bold text-slate-950" style={{ backgroundColor: portalBuilder.theme.accentColor }}>
+                          {component.content}
+                        </div>
+                      ) : null}
+                      {component.type === "image" ? (
+                        component.imageUrl ? <img src={component.imageUrl} alt={component.label} className="h-36 w-full rounded-2xl object-cover" /> : <div className="flex h-36 items-center justify-center rounded-2xl border border-dashed border-white/25 text-sm">Image block</div>
+                      ) : null}
+                      {component.type === "login" ? (
+                        <div>
+                          <div className="text-lg font-bold">{component.content}</div>
+                          <div className="mt-4 space-y-3">
+                            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs opacity-80">Username</div>
+                            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs opacity-80">Password</div>
+                            <div className="rounded-xl px-3 py-2 text-center text-xs font-bold text-slate-950" style={{ backgroundColor: portalBuilder.theme.accentColor }}>
+                              Connect
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      {component.type === "voucher" ? (
+                        <div>
+                          <div className="text-base font-bold">{component.content}</div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 opacity-80">Code</div>
+                            <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 opacity-80">PIN</div>
+                          </div>
+                        </div>
+                      ) : null}
+                      {component.type === "features" ? (
+                        <div className="grid gap-2 text-xs font-semibold">
+                          {component.content.split("|").filter(Boolean).map((item) => (
+                            <div key={item} className="rounded-full border border-white/10 bg-white/10 px-3 py-2">
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Theme</div>
+                  <div className="mt-4 space-y-3">
+                    <Field label="Background image URL" value={portalBuilder.theme.backgroundImage} onChange={(value) => patchBuilderTheme({ backgroundImage: value })} />
+                    <Field label="Background color" value={portalBuilder.theme.backgroundColor} onChange={(value) => patchBuilderTheme({ backgroundColor: value })} />
+                    <Field label="Accent color" value={portalBuilder.theme.accentColor} onChange={(value) => patchBuilderTheme({ accentColor: value })} />
+                    <Field label="Text color" value={portalBuilder.theme.textColor} onChange={(value) => patchBuilderTheme({ textColor: value })} />
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Selected block</div>
+                  {selectedBuilderComponent ? (
+                    <div className="mt-4 space-y-3">
+                      <Field label="Label" value={selectedBuilderComponent.label} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { label: value })} />
+                      <Field label="Content" value={selectedBuilderComponent.content} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { content: value })} />
+                      <div className="grid grid-cols-3 gap-2">
+                        <Field label="X %" value={String(selectedBuilderComponent.x)} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { x: Number(value || 0) })} type="number" />
+                        <Field label="Y %" value={String(selectedBuilderComponent.y)} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { y: Number(value || 0) })} type="number" />
+                        <Field label="Width" value={String(selectedBuilderComponent.width)} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { width: Number(value || 10) })} type="number" />
+                      </div>
+                      <Field label="Text color" value={selectedBuilderComponent.color} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { color: value })} />
+                      <Field label="Background" value={selectedBuilderComponent.background} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { background: value })} />
+                      {selectedBuilderComponent.type === "image" ? (
+                        <Field label="Image URL" value={selectedBuilderComponent.imageUrl ?? ""} onChange={(value) => patchBuilderComponent(selectedBuilderComponent.id, { imageUrl: value })} />
+                      ) : null}
+                      <label className="block">
+                        <span className="mb-2 block text-sm text-slate-600">Alignment</span>
+                        <select
+                          value={selectedBuilderComponent.align}
+                          onChange={(event) => patchBuilderComponent(selectedBuilderComponent.id, { align: event.target.value as PortalBuilderComponent["align"] })}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500"
+                        >
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => deleteBuilderComponent(selectedBuilderComponent.id)}
+                        className="w-full rounded-2xl border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600"
+                      >
+                        Delete block
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-4 text-sm text-slate-500">Add a block to edit its settings.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={() => (selectedPortal ? updatePortal.mutate() : createPortal.mutate())}
@@ -630,8 +951,10 @@ export default function GatewayPage() {
                 setPortalSuccess("/status");
                 setPortalAllowedHosts("127.0.0.1,localhost");
                 setPortalWelcome("Welcome to TINNICORE Wi-Fi");
+                setPortalBuilder(clonePortalBuilderConfig());
+                setSelectedBuilderId("login-card");
               }}
-              className="mt-3 rounded-2xl border border-white/10 px-4 py-3 font-semibold text-white"
+              className="mt-3 rounded-2xl border border-slate-200 px-4 py-3 font-semibold text-slate-700"
             >
               Cancel edit
             </button>

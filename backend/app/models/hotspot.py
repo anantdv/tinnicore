@@ -17,6 +17,7 @@ class HotspotPortal(TimestampMixin, Base):
     success_path: Mapped[str] = mapped_column(String(128), default="/status", nullable=False)
     allowed_hosts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     welcome_message: Mapped[str | None] = mapped_column(String(255))
+    builder_config: Mapped[dict | None] = mapped_column(JSON)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
@@ -56,4 +57,3 @@ class RadiusAuthAttempt(TimestampMixin, Base):
     voucher_code: Mapped[str | None] = mapped_column(String(64))
     plan_name: Mapped[str | None] = mapped_column(String(128))
     session_token: Mapped[str | None] = mapped_column(String(255))
-

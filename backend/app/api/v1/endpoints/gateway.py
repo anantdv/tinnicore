@@ -78,6 +78,25 @@ def hotspot_attempts(db: Session = Depends(get_db), _: User = Depends(get_curren
     return [RadiusAuthAttemptRead.model_validate(item) for item in db.query(RadiusAuthAttempt).order_by(RadiusAuthAttempt.id.desc()).all()]
 
 
+@router.get("/portal/public")
+def public_portal(db: Session = Depends(get_db)) -> dict:
+    portal = db.query(HotspotPortal).filter(HotspotPortal.is_active.is_(True)).order_by(HotspotPortal.id.asc()).first()
+    if not portal:
+        return {
+            "portal_name": "TINNICORE Guest Wi-Fi",
+            "welcome_message": "Welcome to TINNICORE Wi-Fi",
+            "success_path": "/status",
+            "builder_config": None,
+        }
+    return {
+        "id": portal.id,
+        "portal_name": portal.portal_name,
+        "welcome_message": portal.welcome_message,
+        "success_path": portal.success_path,
+        "builder_config": portal.builder_config,
+    }
+
+
 @router.get("/portals", response_model=list[HotspotPortalRead])
 def list_portals(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> list[HotspotPortalRead]:
     return [HotspotPortalRead.model_validate(item) for item in db.query(HotspotPortal).order_by(HotspotPortal.id.asc()).all()]
