@@ -1,4 +1,4 @@
-import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useEffect, useState } from "react";
@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   AlertTriangle,
   Bell,
+  ChevronDown,
   ChevronRight,
   FileCheck,
   Key,
@@ -121,6 +122,12 @@ const navSections = [
     ],
   },
 ] as const;
+
+const NAV_SECTION_STORAGE_KEY = "tinnicore-nav-sections";
+
+function isSectionRouteActive(section: (typeof navSections)[number], pathname: string) {
+  return section.items.some(([, to]) => (to === "/" ? pathname === "/" : pathname === to || pathname.startsWith(`${to}/`)));
+}
 
 function Sparkline({
   data,
@@ -3128,7 +3135,54 @@ function StatusLegend({ color, label, value }: { color: "emerald" | "slate" | "a
 }
 
 export default function Shell() {
+  const location = useLocation();
   const { user, signOut } = useAuth();
+  const [collapsedNavSections, setCollapsedNavSections] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+
+    try {
+      const storedValue = window.localStorage.getItem(NAV_SECTION_STORAGE_KEY);
+      return storedValue ? (JSON.parse(storedValue) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleNavSection = (title: string) => {
+    setCollapsedNavSections((current) => ({
+      ...current,
+      [title]: !current[title],
+    }));
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(NAV_SECTION_STORAGE_KEY, JSON.stringify(collapsedNavSections));
+  }, [collapsedNavSections]);
+
+  useEffect(() => {
+    const activeSection = navSections.find((section) => isSectionRouteActive(section, location.pathname));
+
+    if (!activeSection) {
+      return;
+    }
+
+    setCollapsedNavSections((current) => {
+      if (!current[activeSection.title]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [activeSection.title]: false,
+      };
+    });
+  }, [location.pathname]);
 
   return (
     <div className="min-h-full bg-[#02050a] text-slate-100">
@@ -3146,31 +3200,50 @@ export default function Shell() {
             </div>
 
             <nav className="space-y-4">
-              {navSections.map((section) => (
-                <div key={section.title}>
-                  <div className="mb-1 border-b border-[#0f223d] pb-1 text-[10px] font-bold uppercase text-blue-400">{section.title}</div>
-                  <div className="space-y-1">
-                    {section.items.map(([label, to, Icon]) => (
-                      <NavLink
-                        key={`${section.title}-${label}`}
-                        to={to}
-                        className={({ isActive }) =>
-                          `group flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition ${
-                            isActive ? "border border-blue-500/40 bg-blue-600/25 text-white" : "text-slate-400 hover:bg-[#071329] hover:text-slate-200"
-                          }`
-                        }
-                        end={to === "/"}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          {label}
-                        </span>
-                        {to === "/" ? <ChevronRight className="h-3 w-3 opacity-60" /> : null}
-                      </NavLink>
-                    ))}
+              {navSections.map((section) => {
+                const isCollapsed = Boolean(collapsedNavSections[section.title]);
+                const isActiveSection = isSectionRouteActive(section, location.pathname);
+
+                return (
+                  <div key={section.title}>
+                    <button
+                      type="button"
+                      aria-expanded={!isCollapsed}
+                      onClick={() => toggleNavSection(section.title)}
+                      className={`mb-1 flex w-full items-center justify-between border-b border-[#0f223d] pb-1 text-left text-[10px] font-bold uppercase transition ${
+                        isActiveSection ? "text-blue-200" : "text-blue-400 hover:text-blue-200"
+                      }`}
+                    >
+                      <span>{section.title}</span>
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? "-rotate-90" : "rotate-0"}`} />
+                    </button>
+                    {!isCollapsed ? (
+                      <div className="space-y-1">
+                        {section.items.map(([label, to, Icon]) => (
+                          <NavLink
+                            key={`${section.title}-${label}`}
+                            to={to}
+                            className={({ isActive }) =>
+                              `group flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition ${
+                                isActive
+                                  ? "border border-blue-500/40 bg-blue-600/25 text-white"
+                                  : "text-slate-400 hover:bg-[#071329] hover:text-slate-200"
+                              }`
+                            }
+                            end={to === "/"}
+                          >
+                            <span className="flex items-center gap-2">
+                              <Icon className="h-4 w-4" />
+                              {label}
+                            </span>
+                            {to === "/" ? <ChevronRight className="h-3 w-3 opacity-60" /> : null}
+                          </NavLink>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </nav>
           </div>
 
