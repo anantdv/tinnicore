@@ -210,14 +210,22 @@ function DashboardPage() {
   const summary = dashboard.data;
   const bandwidth = summary?.bandwidth_usage ?? [];
   const health = summary ? Math.round((100 - Number(summary.system_health.cpu) + (100 - Number(summary.system_health.memory)) + (100 - Number(summary.system_health.disk))) / 3) : 92;
-  const totalDataGb = ((summary?.total_data_usage_mb ?? 0) / 1024).toFixed(2);
-  const onlineUsers = summary?.online_users ?? 1248;
-  const activeSessions = summary?.active_sessions ?? 732;
-  const lanNetworks = 4;
-  const voucherBatches = 12;
+  const onlineUsers = summary?.online_users ?? 0;
+  const activeSessions = summary?.active_sessions ?? 0;
+  const lanNetworks = summary?.total_lan_networks ?? 0;
+  const voucherBatches = summary?.total_voucher_batches ?? 0;
+  const totalUsers = summary?.total_users ?? 0;
+  const totalInterfaces = summary?.total_interfaces ?? 0;
   const cpu = summary?.system_health.cpu ?? 23;
   const memory = summary?.system_health.memory ?? 41;
   const disk = summary?.system_health.disk ?? 37;
+  const temperature = summary?.system_health.temperature ?? 0;
+  const uptimeLabel = summary?.system_runtime.uptime_label ?? "0M";
+  const primaryIp = summary?.system_runtime.primary_ip ?? "127.0.0.1";
+  const wanRows = summary?.wan_interfaces ?? [];
+  const bandwidthDown = summary?.bandwidth_totals.download_mb ?? 0;
+  const bandwidthUp = summary?.bandwidth_totals.upload_mb ?? 0;
+  const interfaceRows = summary?.interfaces?.length ? summary.interfaces : [];
   const alerts = summary?.recent_alerts?.length ? summary.recent_alerts : [
     { severity: "warning", message: "High bandwidth usage on WAN 1", status: "2m ago" },
     { severity: "warning", message: "RADIUS server latency high", status: "8m ago" },
@@ -238,11 +246,11 @@ function DashboardPage() {
   return (
     <div className="space-y-3">
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-[1.15fr_1.5fr_1.5fr_1.15fr_1.15fr]">
-        <ReferenceStat label="Threats Blocked" value="312" hint="Today" tone="green" icon={<Shield className="h-6 w-6" />} />
+        <ReferenceStat label="Interfaces" value={totalInterfaces} hint={`${primaryIp} primary IP`} tone="green" icon={<Shield className="h-6 w-6" />} />
         <ReferenceStat label="CPU" value={`${cpu}%`} hint="Live processor load" tone="blue" sparkData={chartData} dataKey="down" />
         <ReferenceStat label="Memory" value={`${memory}%`} hint="Working set" tone="cyan" sparkData={chartData} dataKey="up" />
-        <ReferenceStat label="Temp" value="48°C" hint="Thermal state" tone="amber" sparkData={chartData} dataKey="up" />
-        <ReferenceStat label="Uptime" value="7D 14H 22M" hint="Since May 13, 2025" tone="blue" />
+        <ReferenceStat label="Temp" value={temperature ? `${temperature}°C` : "N/A"} hint="Thermal state" tone="amber" sparkData={chartData} dataKey="up" />
+        <ReferenceStat label="Uptime" value={uptimeLabel} hint={summary?.system_runtime.hostname ?? "System runtime"} tone="blue" />
       </section>
 
       <section className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_432px]">
@@ -267,11 +275,11 @@ function DashboardPage() {
             <div className="absolute left-[23%] bottom-[28%] h-px w-[54%] -rotate-[28deg] bg-cyan-400/35" />
 
             <TopologyNode className="left-1/2 top-0 -translate-x-1/2" title="INTERNET" subtitle="Global Connectivity" value="Status: Online" icon={<Globe className="h-8 w-8" />} />
-            <TopologyNode className="left-[11%] top-[26%]" title="USERS" subtitle="Subscriber Accounts" value={`${onlineUsers.toLocaleString()} Users`} icon={<UsersIcon className="h-8 w-8" />} />
+            <TopologyNode className="left-[11%] top-[26%]" title="USERS" subtitle="Subscriber Accounts" value={`${totalUsers.toLocaleString()} Users`} icon={<UsersIcon className="h-8 w-8" />} />
             <TopologyNode className="right-[6%] top-[25%]" title="LAN NETWORKS" subtitle="Internal Segments" value={`${lanNetworks} Networks`} icon={<Network className="h-8 w-8" />} />
             <TopologyNode className="left-[10%] bottom-[17%]" title="VOUCHER BATCHES" subtitle="Access Code Pools" value={`${voucherBatches} Batches`} icon={<Key className="h-8 w-8" />} />
             <TopologyNode className="right-[6%] bottom-[17%]" title="SESSIONS" subtitle="Active Connections" value={`${activeSessions.toLocaleString()} Sessions`} icon={<Radio className="h-8 w-8" />} />
-            <TopologyNode className="left-1/2 bottom-0 -translate-x-1/2" title="CLIENTS" subtitle="3,797" value="Online Now" icon={<UsersIcon className="h-8 w-8" />} />
+            <TopologyNode className="left-1/2 bottom-0 -translate-x-1/2" title="CLIENTS" subtitle={`${onlineUsers.toLocaleString()} Online`} value={`${totalInterfaces} Interfaces`} icon={<UsersIcon className="h-8 w-8" />} />
 
             <div className="absolute left-1/2 top-1/2 flex h-48 w-48 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-cyan-400/60 bg-[#061326] text-center shadow-[0_0_54px_rgba(0,149,255,0.45)]">
               <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-blue-500/30 bg-[#0b1b32] shadow-inner">
@@ -296,9 +304,9 @@ function DashboardPage() {
               <div className="flex-1 space-y-2 text-xs">
                 <HealthBar label="CPU Usage" value={cpu} />
                 <HealthBar label="Memory Usage" value={memory} />
-                <HealthBar label="Temperature" value={48} />
+                <HealthBar label="Temperature" value={temperature} />
                 <HealthBar label="Disk Usage" value={disk} />
-                <div className="flex justify-between text-slate-300"><span>Uptime</span><strong>7D 14H 22M</strong></div>
+                <div className="flex justify-between text-slate-300"><span>Uptime</span><strong>{uptimeLabel}</strong></div>
               </div>
             </div>
           </ReferencePanel>
@@ -341,44 +349,44 @@ function DashboardPage() {
               </ResponsiveContainer>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
-              <div><span className="text-slate-500">Download</span><div className="text-lg font-bold text-white">1.26 Gbps</div><span className="text-emerald-400">+12.5%</span></div>
-              <div><span className="text-slate-500">Upload</span><div className="text-lg font-bold text-white">437 Mbps</div><span className="text-emerald-400">+9.3%</span></div>
+              <div><span className="text-slate-500">Download</span><div className="text-lg font-bold text-white">{formatMegabytes(bandwidthDown)}</div><span className="text-slate-400">session traffic</span></div>
+              <div><span className="text-slate-500">Upload</span><div className="text-lg font-bold text-white">{formatMegabytes(bandwidthUp)}</div><span className="text-slate-400">session traffic</span></div>
             </div>
           </ReferencePanel>
 
           <ReferencePanel title="WAN Status" action="Details">
-            <WanStatusTable compact />
+            <WanStatusTable compact rows={wanRows} />
           </ReferencePanel>
         </aside>
       </section>
 
       <section className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr_1.25fr_1fr]">
-        <ReferencePanel title="Top Applications">
-          <ApplicationRows />
+        <ReferencePanel title="Interface Summary">
+          <InterfaceRows rows={interfaceRows} />
         </ReferencePanel>
-        <ReferencePanel title="Data Usage by Site">
+        <ReferencePanel title="Platform Inventory">
           <div className="flex items-center gap-4">
             <div className="relative flex h-24 w-24 items-center justify-center rounded-full border-[10px] border-blue-600">
               <div className="absolute inset-0 rounded-full border-[10px] border-emerald-400 border-l-transparent border-b-transparent" />
-              <div className="text-center"><div className="text-xl font-black text-white">{Number(totalDataGb) > 0 ? totalDataGb : "2.45"}</div><div className="text-[10px] text-slate-400">Total</div></div>
+              <div className="text-center"><div className="text-xl font-black text-white">{summary?.total_plans ?? 0}</div><div className="text-[10px] text-slate-400">Plans</div></div>
             </div>
             <div className="flex-1 space-y-2 text-xs text-slate-300">
-              <DataSite label="Hotels" value="1.25 TB" pct="51%" color="bg-blue-500" />
-              <DataSite label="Campuses" value="652 GB" pct="27%" color="bg-emerald-400" />
-              <DataSite label="Branch Sites" value="352 GB" pct="14%" color="bg-amber-400" />
-              <DataSite label="Remote Sites" value="196 GB" pct="8%" color="bg-sky-400" />
+              <DataSite label="Users" value={String(totalUsers)} pct="accounts" color="bg-blue-500" />
+              <DataSite label="Voucher Batches" value={String(voucherBatches)} pct="configured" color="bg-emerald-400" />
+              <DataSite label="LAN Networks" value={String(lanNetworks)} pct="segments" color="bg-amber-400" />
+              <DataSite label="Firewall Rules" value={String(summary?.total_firewall_rules ?? 0)} pct="enabled" color="bg-sky-400" />
             </div>
           </div>
         </ReferencePanel>
         <ReferencePanel title="Device Information">
-          <DeviceRows firmware={summary?.device_info.firmware ?? "v1.2.8"} />
+          <DeviceRows summary={summary} />
         </ReferencePanel>
         <ReferencePanel title="License Status">
           <div className="flex items-center gap-5">
             <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"><Shield className="h-9 w-9" /></div>
             <div>
               <div className="text-lg font-bold text-emerald-400">{summary?.device_info.license ?? "Active"}</div>
-              <div className="text-xs text-slate-400">Expires on 2027-06-21</div>
+              <div className="text-xs text-slate-400">{summary?.device_info.license_expires_at ? `Expires on ${new Date(summary.device_info.license_expires_at).toLocaleDateString()}` : "Expiry not set"}</div>
               <button className="mt-3 rounded border border-[#0f223d] bg-[#081223] px-4 py-2 text-xs font-semibold text-blue-300">Manage License</button>
             </div>
           </div>
@@ -387,13 +395,20 @@ function DashboardPage() {
           <div className="grid grid-cols-2 gap-2">
             <MiniMetric label="CPU" value={`${cpu}%`} color="blue" />
             <MiniMetric label="RAM" value={`${memory}%`} color="cyan" />
-            <MiniMetric label="Temperature" value="48°C" color="red" />
-            <MiniMetric label="Threats Blocked" value="312" color="red" />
+            <MiniMetric label="Temperature" value={temperature ? `${temperature}°C` : "N/A"} color="red" />
+            <MiniMetric label="Disk" value={`${disk}%`} color="red" />
           </div>
         </ReferencePanel>
       </section>
     </div>
   );
+}
+
+function formatMegabytes(value: number) {
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(2)} GB`;
+  }
+  return `${value.toFixed(2)} MB`;
 }
 
 function HealthBar({ label, value }: { label: string; value: number }) {
@@ -493,13 +508,16 @@ function TopologyNode({
   );
 }
 
-function WanStatusTable({ compact = false }: { compact?: boolean }) {
-  const rows = [
-    ["WAN 1 - ISP 1", "Online", "12 ms", "100.25 Mbps", "45.8 Mbps"],
-    ["WAN 2 - ISP 2", "Online", "18 ms", "50.15 Mbps", "23.4 Mbps"],
-    ["WAN 3 - LTE", "Online", "25 ms", "12.45 Mbps", "7.8 Mbps"],
-    ["WAN 4 - Backup", "Standby", "-", "-", "-"],
-  ];
+function WanStatusTable({
+  compact = false,
+  rows = [],
+}: {
+  compact?: boolean;
+  rows?: Array<{ name: string; status: string; latency_ms?: number | null; loss_percent?: number | null }>;
+}) {
+  const displayRows = rows.length
+    ? rows.map((row) => [row.name, row.status, row.latency_ms ? `${row.latency_ms} ms` : "-", row.loss_percent ? `${row.loss_percent}% loss` : "-", "-"] as const)
+    : ([["WAN", "Unknown", "-", "-", "-"]] as const);
   return (
     <div className="overflow-hidden rounded border border-[#0f223d]">
       <table className="w-full text-left text-[11px]">
@@ -513,10 +531,10 @@ function WanStatusTable({ compact = false }: { compact?: boolean }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-[#0f223d]">
-          {rows.map(([wan, status, latency, down, up]) => (
+          {displayRows.map(([wan, status, latency, down, up]) => (
             <tr key={wan}>
               <td className="px-3 py-2 font-semibold text-slate-200">{wan}</td>
-              <td className="px-3 py-2"><StatusPill status={status === "Online" ? "Online" : "Offline"} /></td>
+              <td className="px-3 py-2"><StatusPill status={status.toLowerCase() === "up" || status.toLowerCase() === "online" ? "Online" : "Offline"} /></td>
               <td className="px-3 py-2 text-slate-400">{latency}</td>
               {!compact ? <td className="px-3 py-2 text-slate-400">{down}</td> : null}
               <td className="px-3 py-2 text-slate-400">{up}</td>
@@ -528,21 +546,18 @@ function WanStatusTable({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function ApplicationRows() {
+function InterfaceRows({ rows }: { rows: Array<{ name: string; role: string; address?: string | null; status: string; kind: string }> }) {
   return (
     <div className="space-y-3">
-      {[
-        ["Web Browsing", "542 GB", 35, "#0f7dff"],
-        ["Streaming", "275 GB", 18, "#10b981"],
-        ["Social Media", "187 GB", 12, "#8b5cf6"],
-        ["File Sharing", "156 GB", 10, "#f59e0b"],
-        ["Online Gaming", "98 GB", 6, "#38bdf8"],
-      ].map(([name, usage, pct, color]) => (
-        <div key={String(name)}>
-          <div className="mb-1 flex justify-between text-[11px] text-slate-300"><span>{name}</span><span>{usage}</span></div>
-          <div className="h-1.5 rounded-full bg-[#081223]"><div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: String(color) }} /></div>
+      {rows.length ? rows.slice(0, 5).map((row) => (
+        <div key={row.name} className="rounded border border-[#0f223d] bg-[#081223] px-3 py-2">
+          <div className="mb-1 flex justify-between text-[11px] text-slate-300"><span>{row.name}</span><span className="uppercase">{row.role}</span></div>
+          <div className="flex justify-between text-[11px] text-slate-500">
+            <span>{row.address || row.kind}</span>
+            <span className={row.status === "online" ? "text-emerald-400" : "text-slate-500"}>{row.status}</span>
+          </div>
         </div>
-      ))}
+      )) : <div className="text-sm text-slate-500">No interfaces configured yet.</div>}
     </div>
   );
 }
@@ -556,16 +571,18 @@ function DataSite({ label, value, pct, color }: { label: string; value: string; 
   );
 }
 
-function DeviceRows({ firmware }: { firmware: string }) {
+function DeviceRows({ summary }: { summary?: DashboardSummary }) {
   return (
     <div className="space-y-2 text-[11px] text-slate-400">
       {[
-        ["Model", "TINNICORE 150"],
-        ["Serial Number", "TNC150-000102"],
-        ["Firmware", firmware],
-        ["OS Version", "TINNICORE OS 1.2.8"],
-        ["CPU", "4 Cores"],
-        ["Memory", "4 GB DDR4"],
+        ["Model", summary?.device_info.model ?? "TINNICORE 150"],
+        ["Serial Number", summary?.device_info.serial_number ?? "Unknown"],
+        ["Firmware", summary?.device_info.firmware ?? "v1.2.8"],
+        ["OS Version", summary?.device_info.os_version ?? "TINNICORE OS"],
+        ["CPU", `${summary?.device_info.cpu_cores ?? 0} Cores`],
+        ["Memory", summary ? `${(summary.device_info.memory_total_mb / 1024).toFixed(1)} GB` : "Unknown"],
+        ["Hostname", summary?.device_info.hostname ?? "Unknown"],
+        ["Primary IP", summary?.device_info.primary_ip ?? "Unknown"],
       ].map(([label, value]) => (
         <div key={label} className="flex justify-between border-b border-[#0f223d] pb-1 last:border-0">
           <span>{label}</span>
